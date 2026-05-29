@@ -34,12 +34,26 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 
-# ── Allow running from repo root or scripts/ ─────────────────────────────────
+# ── Find netadv library — check several locations ─────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CATT_ROOT = REPO_ROOT.parent / "netadv-ccs"
-for p in [str(REPO_ROOT), str(CATT_ROOT)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+_candidates = [
+    REPO_ROOT,                                      # adversarial-lab root (if netadv copied here)
+    REPO_ROOT.parent / "netadv-ccs",                # local: sibling repo named netadv-ccs
+    REPO_ROOT.parent / "catt-ccs",                  # local: sibling repo named catt-ccs
+    Path("/content/netadv-ccs"),                    # Colab: cloned as netadv-ccs
+    Path("/content/catt-ccs"),                      # Colab: cloned as catt-ccs
+]
+_found = False
+for _p in _candidates:
+    if (_p / "netadv").exists():
+        sys.path.insert(0, str(_p))
+        print(f"Found netadv at: {_p}")
+        _found = True
+        break
+if not _found:
+    print("ERROR: Could not find the netadv library. Clone catt-ccs first:")
+    print("  !git clone https://github.com/sassom2112/catt-ccs /content/netadv-ccs")
+    sys.exit(1)
 
 from netadv.constraints.bounds import ConstraintBounds, validity_report
 from netadv.constraints.datasets.unsw_nb15 import NUM_FEATURES, UNSW_NB15_SPEC
