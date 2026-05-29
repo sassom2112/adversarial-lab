@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Adversarial NIDS Lab — Constraint Inflation Demo</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <span class="nav-logo">MS<span class="muted">.payload</span></span>
+    <div class="nav-links">
+      <a href="https://github.com/sassom2112/catt-ccs" target="_blank" rel="noopener">Paper →</a>
+      <a href="https://github.com/sassom2112" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://mikesasso.com" target="_blank" rel="noopener">mikesasso.com</a>
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- ── Header ──────────────────────────────────────────────────────────── -->
+    <section class="hero">
+      <p class="label">// adversarial-nids-lab</p>
+      <h1>Constraint Inflation — Interactive Demo</h1>
+      <p class="sub">
+        Most published adversarial NIDS evaluations run gradient attacks without constraining
+        outputs to physically valid network traffic. This produces adversarial examples with
+        impossible feature values — negative TTLs, sub-zero packet counts, rates outside [0,1]
+        — that no real network can generate. Reported evasion rates are inflated by how easily
+        the optimizer exploits this infeasible space.
+      </p>
+      <p class="sub">
+        This demo runs <strong>constrained PGD</strong> (physically valid) and
+        <strong>unconstrained PGD</strong> (standard evaluation) side-by-side on real
+        UNSW-NB15 network flows so you can see exactly what changes — and which
+        features go impossible.
+      </p>
+    </section>
+
+    <!-- ── Controls ────────────────────────────────────────────────────────── -->
+    <section class="controls card">
+      <p class="label">// configure-attack</p>
+
+      <div class="control-row">
+        <label for="sample-select">Network flow</label>
+        <select id="sample-select">
+          {% for s in samples %}
+          <option value="{{ s.id }}">{{ s.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="sample-desc" class="sample-desc muted"></div>
+
+      <div class="control-row epsilon-row">
+        <label for="epsilon-slider">Perturbation budget ε</label>
+        <div class="slider-wrap">
+          <input type="range" id="epsilon-slider"
+                 min="0.05" max="0.50" step="0.05" value="0.20" />
+          <span id="epsilon-val" class="epsilon-val">0.20</span>
+        </div>
+        <p class="hint muted">
+          ε = 0.20 is the most common benchmark setting in published NIDS papers.
+          At this budget on UNSW-NB15, the constraint inflation gap peaks at
+          <strong>+72 percentage points</strong>.
+        </p>
+      </div>
+
+      <button id="run-btn" class="run-btn">Run Attack</button>
+    </section>
+
+    <!-- ── Results ──────────────────────────────────────────────────────────── -->
+    <section id="results" class="results hidden">
+
+      <!-- Verdict row -->
+      <div class="verdict-row card">
+        <p class="label">// classifier-verdict</p>
+        <div class="verdicts">
+          <div class="verdict">
+            <span class="v-label">Original</span>
+            <span id="v-original" class="v-badge"></span>
+          </div>
+          <div class="verdict">
+            <span class="v-label">Constrained PGD</span>
+            <span id="v-constrained" class="v-badge"></span>
+            <span class="v-note">domain-valid traffic</span>
+          </div>
+          <div class="verdict">
+            <span class="v-label">Unconstrained PGD</span>
+            <span id="v-unconstrained" class="v-badge"></span>
+            <span class="v-note">standard evaluation</span>
+          </div>
+        </div>
+        <div id="gap-callout" class="gap-callout hidden"></div>
+      </div>
+
+      <!-- Feature table -->
+      <div class="card">
+        <p class="label">// feature-comparison</p>
+        <p class="muted table-sub">
+          Values shown in original domain units.
+          <span class="warn-inline">⚠</span> = violates documented domain constraint.
+        </p>
+        <div class="table-wrap">
+          <table id="feature-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Original</th>
+                <th>Constrained <span class="th-note">valid ✓</span></th>
+                <th>Unconstrained <span class="th-note">standard eval</span></th>
+                <th>Valid range</th>
+              </tr>
+            </thead>
+            <tbody id="feature-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Violations callout -->
+      <div id="violations-card" class="card violations-card hidden">
+        <p class="label">// constraint-violations</p>
+        <p class="muted">
+          These features in the unconstrained adversarial example have values that
+          <strong>cannot exist</strong> on a real network. A sensor recording these
+          flows would log them as impossible. The evasion is not real — it is purchased
+          by exploiting infeasible feature space.
+        </p>
+        <ul id="violations-list" class="violations-list"></ul>
+      </div>
+
+      <!-- Explainer -->
+      <div class="card explainer">
+        <p class="label">// what-this-means</p>
+        <p id="explainer-text" class="muted"></p>
+      </div>
+
+    </section>
+
+    <!-- ── Footer ──────────────────────────────────────────────────────────── -->
+    <footer class="footer">
+      <p>
+        Research: <a href="https://github.com/sassom2112/catt-ccs" target="_blank" rel="noopener">
+          Constraint Inflation in Adversarial NIDS Evaluation</a> · ACM CCS 2027 (under preparation)
+      </p>
+      <p>Michael Sasso · <a href="https://mikesasso.com">mikesasso.com</a></p>
+    </footer>
+
+  </main>
+
+  <script src="/static/lab.js"></script>
+  <script>
+    // Populate sample descriptions
+    const descriptions = {{ samples | tojson }};
+    const descEl = document.getElementById('sample-desc');
+    const sel = document.getElementById('sample-select');
+    function updateDesc() {
+      const s = descriptions.find(d => d.id == sel.value);
+      descEl.textContent = s ? s.description : '';
+    }
+    sel.addEventListener('change', updateDesc);
+    updateDesc();
+  </script>
+</body>
+</html>
